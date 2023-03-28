@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 import numpy as np
-import os
+import os, time
 
 
 class FTT5DecodingWeight(object):
@@ -98,47 +98,47 @@ class FTT5DecodingWeight(object):
                 weight_dict[name] = param_t
 
         # load by torch model directly
-        t = torch.stack([weight_dict["decoder.block.{}.layer.0.layer_norm.weight".format(i)]
+        t = torch.stack([weight_dict["decoder.block.{}.layer.0.layer_norm.weight".format(0)]
                         for i in range(start_layer, end_layer)], 0).contiguous().cuda()
         self.w.append(t)
-        t = torch.stack([weight_dict["decoder.block.{}.layer.0.SelfAttention.qkv.weight".format(i)]
+        t = torch.stack([weight_dict["decoder.block.{}.layer.0.SelfAttention.qkv.weight".format(0)]
                         for i in range(start_layer, end_layer)], 0).contiguous().cuda()
         t = t.reshape([t.shape[0], t.shape[1], 3, t.shape[2] // 3])
         t = t.split(t.shape[-1] // self.tensor_para_size, dim=-1)[self.tensor_para_rank].contiguous()
         self.w.append(t)
-        t = torch.stack([weight_dict["decoder.block.{}.layer.0.SelfAttention.o.weight".format(i)]
+        t = torch.stack([weight_dict["decoder.block.{}.layer.0.SelfAttention.o.weight".format(0)]
                         for i in range(start_layer, end_layer)], 0).contiguous().cuda()
         t = t.split(t.shape[1] // self.tensor_para_size, dim=1)[self.tensor_para_rank].contiguous()
         self.w.append(t)
-        t = torch.stack([weight_dict["decoder.block.{}.layer.1.layer_norm.weight".format(i)]
+        t = torch.stack([weight_dict["decoder.block.{}.layer.1.layer_norm.weight".format(0)]
                         for i in range(start_layer, end_layer)], 0).contiguous().cuda()
         self.w.append(t)
-        t = torch.stack([weight_dict["decoder.block.{}.layer.1.EncDecAttention.q.weight".format(i)]
-                        for i in range(start_layer, end_layer)], 0).contiguous().cuda()
-        t = t.split(t.shape[-1] // self.tensor_para_size, dim=-1)[self.tensor_para_rank].contiguous()
-        self.w.append(t)
-        t = torch.stack([weight_dict["decoder.block.{}.layer.1.EncDecAttention.k.weight".format(i)]
+        t = torch.stack([weight_dict["decoder.block.{}.layer.1.EncDecAttention.q.weight".format(0)]
                         for i in range(start_layer, end_layer)], 0).contiguous().cuda()
         t = t.split(t.shape[-1] // self.tensor_para_size, dim=-1)[self.tensor_para_rank].contiguous()
         self.w.append(t)
-        t = torch.stack([weight_dict["decoder.block.{}.layer.1.EncDecAttention.v.weight".format(i)]
+        t = torch.stack([weight_dict["decoder.block.{}.layer.1.EncDecAttention.k.weight".format(0)]
                         for i in range(start_layer, end_layer)], 0).contiguous().cuda()
         t = t.split(t.shape[-1] // self.tensor_para_size, dim=-1)[self.tensor_para_rank].contiguous()
         self.w.append(t)
-        t = torch.stack([weight_dict["decoder.block.{}.layer.1.EncDecAttention.o.weight".format(i)]
+        t = torch.stack([weight_dict["decoder.block.{}.layer.1.EncDecAttention.v.weight".format(0)]
+                        for i in range(start_layer, end_layer)], 0).contiguous().cuda()
+        t = t.split(t.shape[-1] // self.tensor_para_size, dim=-1)[self.tensor_para_rank].contiguous()
+        self.w.append(t)
+        t = torch.stack([weight_dict["decoder.block.{}.layer.1.EncDecAttention.o.weight".format(0)]
                         for i in range(start_layer, end_layer)], 0).contiguous().cuda()
         t = t.split(t.shape[1] // self.tensor_para_size, dim=1)[self.tensor_para_rank].contiguous()
         self.w.append(t)
-        t = torch.stack([weight_dict["decoder.block.{}.layer.2.layer_norm.weight".format(i)]
+        t = torch.stack([weight_dict["decoder.block.{}.layer.2.layer_norm.weight".format(0)]
                         for i in range(start_layer, end_layer)], 0).contiguous().cuda()
         self.w.append(t)
-        t = torch.stack([weight_dict["decoder.block.{}.layer.2.DenseReluDense.wi.weight".format(i)]
+        t = torch.stack([weight_dict["decoder.block.{}.layer.2.DenseReluDense.wi.weight".format(0)]
                         for i in range(start_layer, end_layer)], 0).contiguous().cuda()
         t = t.split(t.shape[-1] // self.tensor_para_size, dim=-1)[self.tensor_para_rank].contiguous()
         self.w.append(t)
         ## empty wi2 weight
         self.w.append(torch.empty((1,1), dtype=torch_weight_dtype).contiguous().cuda())
-        t = torch.stack([weight_dict["decoder.block.{}.layer.2.DenseReluDense.wo.weight".format(i)] for i in range(start_layer, end_layer)], 0).contiguous().cuda()
+        t = torch.stack([weight_dict["decoder.block.{}.layer.2.DenseReluDense.wo.weight".format(0)] for i in range(start_layer, end_layer)], 0).contiguous().cuda()
         t = t.split(t.shape[1] // self.tensor_para_size, dim=1)[self.tensor_para_rank].contiguous()
         self.w.append(t)
         t = weight_dict["decoder.final_layer_norm.weight"].contiguous().cuda()
@@ -481,46 +481,56 @@ class FTT5(nn.Module):
         self.encoder = encoder
         self.decoding = decoding
 
-    def forward(self, input_token, inputs_embeds, beam_size, max_seq_len,
-                top_k, top_p, beam_search_diversity_rate = 0.0,
-                temperature=1.0, len_penalty=0.0, repetition_penalty=None, presence_penalty=None, min_length=0, random_seed=0,
-                is_return_output_log_probs=False, is_return_cum_log_probs=False, is_return_cross_attentions=False,
-                bad_words_list=None, stop_words_list=None):
-        input_ids = input_token.input_ids.to("cuda").type(torch.int32)
-        mem_seq_len = 0
-        if hasattr(input_token, "attention_mask"):
-            mem_seq_len = torch.sum(input_token.attention_mask, dim=1).type(torch.int32).to("cuda")
+    def forward(self, input_ids, mem_seq_len, max_seq_len, profile_iters):
+        if dist.is_mpi_available():
+            rank = dist.get_rank()
+
         else:
-            mem_seq_len = input_token.seq_len.type(torch.int32).to("cuda")
+            rank = 0
+            
+        encoder_time = []
+        decoder_time = []
+        for _ in range(profile_iters):
+            
+            if rank == 0:
+                start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+                start.record()
+            ft_encoder_outputs = self.encoder.forward(input_ids, mem_seq_len, None)
+            
+            # if rank == 0:
+            #     end.record()
+            #     torch.cuda.synchronize()
+            #     run_time = start.elapsed_time(end)
+            #     encoder_time.append(run_time)
 
-        ft_encoder_outputs = self.encoder.forward(input_ids, mem_seq_len, inputs_embeds)
-        results = self.decoding.forward(beam_size,  # optional, can be None
-                                        max_seq_len,
-                                        top_k,  # optional, can be None
-                                        top_p,  # optional, can be None
-                                        beam_search_diversity_rate,  # optional, can be None
-                                        temperature,  # optional, can be None
-                                        len_penalty,  # optional, can be None
-                                        repetition_penalty,  # optional, can be None
-                                        presence_penalty,  # optional, can be None
-                                        min_length,  # optional, can be None
-                                        random_seed,  # optional, can be None
-                                        ft_encoder_outputs,
-                                        mem_seq_len,
-                                        is_return_output_log_probs,  # optional, can be None
-                                        is_return_cum_log_probs,  # optional, can be None
-                                        is_return_cross_attentions,  # optional, can be None
-                                        bad_words_list, # optional, can be None
-                                        stop_words_list, # optional, can be None
-                                        )
-        ft_decoding_outputs = results.pop(0).reshape([-1, beam_size, max_seq_len])
-        ft_decoding_seq_lens = results.pop(0).reshape([-1, beam_size])
-        if is_return_output_log_probs:
-            ft_output_log_probs = results.pop(0)
-        if is_return_cum_log_probs:
-            ft_cum_log_probs = results.pop(0)
-        if is_return_cross_attentions:
-            ft_cross_attentions = results.pop(0)
-            return ft_decoding_outputs.cpu().numpy(), ft_decoding_seq_lens.cpu().numpy(), ft_cross_attentions.cpu().numpy()
-
-        return ft_decoding_outputs.cpu().numpy(), ft_decoding_seq_lens.cpu().numpy()
+            
+            # if rank == 0:
+            #     start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+            #     start.record()
+            self.decoding.forward(1,  # optional, can be None
+                                max_seq_len,
+                                1,  # optional, can be None
+                                1,  # optional, can be None
+                                0.,  # optional, can be None
+                                1.,  # optional, can be None
+                                1.,  # optional, can be None
+                                None,  # optional, can be None
+                                None,  # optional, can be None
+                                0,  # optional, can be None
+                                None,  # optional, can be None
+                                ft_encoder_outputs,
+                                mem_seq_len,
+                                False,  # optional, can be None
+                                False,  # optional, can be None
+                                False,  # optional, can be None
+                                None, # optional, can be None
+                                None)
+            if rank == 0:
+                end.record()
+                torch.cuda.synchronize()
+                run_time = start.elapsed_time(end)
+                decoder_time.append(run_time)
+            torch.cuda.synchronize()
+            time.sleep(0.1)
+        
+        return encoder_time, decoder_time
