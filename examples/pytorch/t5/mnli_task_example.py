@@ -28,7 +28,7 @@ import torch.distributed as dist
 # sys.path.append(dir_path + "/../../../3rdparty/transformers/src/")
 
 from transformers import T5ForConditionalGeneration, T5Config
-import math
+import math, json
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(dir_path + "/../../..")
@@ -155,6 +155,7 @@ def main():
 
     ft_t5 = FTT5(ft_encoder, ft_decoding)
 
+    time_data = {}
     for _BATCH in range(args.end_batch_size, args.start_batch_size - 1, -args.batch_size_hop):
         print(f"start {_BATCH} forward")
         input_token = torch.randint(5, (_BATCH, args.encoder_max_seq_len),
@@ -166,8 +167,12 @@ def main():
                         mem_seq_len,
                         args.decoder_max_seq_len,
                         args.profile_iters)
-        
-        print(f"Batch{_BATCH} time: {_time}")
+            _time = _time[1:]
+            time_data[_BATCH] = sum(_time) / len(_time)
+    
+    time_data = dict(sorted(time_data.items()))
+    with open(f"base_result.json", 'w') as f:
+        json.dump(time_data, f, indent=4)
 
 if __name__ == '__main__':
     main()
