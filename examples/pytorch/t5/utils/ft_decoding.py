@@ -488,8 +488,7 @@ class FTT5(nn.Module):
         else:
             rank = 0
             
-        encoder_time = []
-        decoder_time = []
+        _time = []
         for _ in range(profile_iters):
             
             if rank == 0:
@@ -529,8 +528,8 @@ class FTT5(nn.Module):
                 end.record()
                 torch.cuda.synchronize()
                 run_time = start.elapsed_time(end)
-                decoder_time.append(run_time)
+                _time.append(run_time)
             torch.cuda.synchronize()
             time.sleep(0.1)
         
-        return encoder_time, decoder_time
+        return sum(_time[1:])/len(_time[1:])

@@ -162,13 +162,12 @@ def main():
         mem_seq_len = torch.tensor([args.encoder_max_seq_len for _ in range(_BATCH)], dtype=torch.int32).to(rank)
         print(f"{input_token}")
         with torch.no_grad():
-            encoder_time, decoder_time = ft_t5(input_token,
-                                            mem_seq_len,
-                                            args.decoder_max_seq_len,
-                                            args.profile_iters)
+            _time = ft_t5(input_token,
+                        mem_seq_len,
+                        args.decoder_max_seq_len,
+                        args.profile_iters)
         
-        print(encoder_time)
-        print(decoder_time)
+        print(f"Batch{_BATCH} time: {_time}")
 
 if __name__ == '__main__':
     main()
