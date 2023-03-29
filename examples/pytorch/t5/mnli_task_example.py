@@ -161,14 +161,13 @@ def main():
         input_token = torch.randint(5, (_BATCH, args.encoder_max_seq_len),
                                 dtype=torch.int32).to(rank)
         mem_seq_len = torch.tensor([args.encoder_max_seq_len for _ in range(_BATCH)], dtype=torch.int32).to(rank)
-        print(f"{input_token}")
+        
         with torch.no_grad():
             _time = ft_t5(input_token,
                         mem_seq_len,
                         args.decoder_max_seq_len,
                         args.profile_iters)
-            _time = _time[1:]
-            time_data[_BATCH] = sum(_time) / len(_time)
+            time_data[_BATCH] = _time
     
     time_data = dict(sorted(time_data.items()))
     with open(f"base_result.json", 'w') as f:
