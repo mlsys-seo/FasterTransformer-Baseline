@@ -167,11 +167,13 @@ def main():
                         mem_seq_len,
                         args.decoder_max_seq_len,
                         args.profile_iters)
-            time_data[_BATCH] = _time
+            if rank == 0:
+                time_data[_BATCH] = _time
     
-    time_data = dict(sorted(time_data.items()))
-    with open(f"base_result.json", 'w') as f:
-        json.dump(time_data, f, indent=4)
+    if rank == 0:
+        time_data = dict(sorted(time_data.items()))
+        with open(f"base_result.json", 'w') as f:
+            json.dump(time_data, f, indent=4)
 
 if __name__ == '__main__':
     main()

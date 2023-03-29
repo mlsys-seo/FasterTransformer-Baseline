@@ -531,5 +531,12 @@ class FTT5(nn.Module):
                 _time.append(run_time)
             torch.cuda.synchronize()
             time.sleep(0.1)
+        if rank == 0:
+            _time.sort()
+            _time = _time[:-1]
+            _time = sum(_time)/len(_time)
         
-        return sum(_time[1:])/len(_time[1:])
+        else:
+            _time = 0
+        
+        return _time
