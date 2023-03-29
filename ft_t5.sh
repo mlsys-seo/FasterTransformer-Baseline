@@ -19,7 +19,9 @@ PROFILE_NSYS="nsys profile --cuda-graph-trace graph -t cuda,nvtx -o /workspace/p
 #         --config_path /workspace/code/multi/model_config
 
 mpirun -n 4 --allow-run-as-root \
-python /workspace/code/FasterTransformer-Baseline/examples/pytorch/t5/mnli_task_example.py \
+python /workspace/FasterTransformer-Baseline-T5/examples/pytorch/t5/mnli_task_example.py \
+        --tensor_para_size 1 \
+        --pipeline_para_size 4 \
         --start_batch_size 8 \
         --end_batch_size 512 \
         --batch_size_hop 8 \
@@ -27,5 +29,6 @@ python /workspace/code/FasterTransformer-Baseline/examples/pytorch/t5/mnli_task_
         --decoder_max_seq_len 32 \
         --data_type fp16 \
         --model t5-11b \
-        --config_path /workspace/code/BBB/model_config \
-        --profile_iters 11
+        --config_path /workspace/BBB/model_config \
+        --profile_iters 11 \
+        --save_path /workspace/base_4GPU_4PP.json

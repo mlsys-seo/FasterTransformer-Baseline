@@ -61,6 +61,8 @@ def main():
                         help='data type for inference (default: fp32)', choices=['fp32', 'fp16', 'bf16'])
     parser.add_argument('--config_path', type=str, default="/workspace/code/multi/model_config", metavar='STRING',
                         help='the path of FasterTransformer pytorch t5 op library.')
+    parser.add_argument('--save_path', type=str, default="/workspace/code/multi/model_config", metavar='STRING',
+                        help='the path of FasterTransformer pytorch t5 op library.')
     
     
     args = parser.parse_args()
@@ -157,7 +159,8 @@ def main():
 
     time_data = {}
     for _BATCH in range(args.end_batch_size, args.start_batch_size - 1, -args.batch_size_hop):
-        print(f"start {_BATCH} forward")
+        if rank == 0:
+            print(f"start {_BATCH} forward")
         input_token = torch.randint(5, (_BATCH, args.encoder_max_seq_len),
                                 dtype=torch.int32).to(rank)
         mem_seq_len = torch.tensor([args.encoder_max_seq_len for _ in range(_BATCH)], dtype=torch.int32).to(rank)
@@ -168,11 +171,12 @@ def main():
                         args.decoder_max_seq_len,
                         args.profile_iters)
             if rank == 0:
+                print(f"Batch {_BATCH} : {_time}")
                 time_data[_BATCH] = _time
     
     if rank == 0:
         time_data = dict(sorted(time_data.items()))
-        with open(f"base_result.json", 'w') as f:
+        with open(f"{args.save_path}", 'w') as f:
             json.dump(time_data, f, indent=4)
 
 if __name__ == '__main__':
